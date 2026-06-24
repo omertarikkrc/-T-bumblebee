@@ -22,7 +22,7 @@ Python kurulu değilse → https://www.python.org/downloads
 
 Kurulumda **"Add Python to PATH"** kutucuğunu mutlaka işaretle.
 
-Kurulumu doğrulamak için terminali aç ve şunu yaz:
+Kurulumu doğrulamak için terminali aç:
 ```
 python --version
 ```
@@ -31,8 +31,8 @@ python --version
 
 **Git kuruluysa:**
 ```bash
-git clone https://github.com/KULLANICI_ADIN/itu-ders-secici.git
-cd itu-ders-secici
+git clone https://github.com/omertarikkrc/-T-bumblebee.git
+cd -T-bumblebee
 ```
 
 **Git yoksa:**
@@ -49,22 +49,24 @@ pip install requests
 
 ### Adım 1 — Token Al
 
-Token, Kepler'in sana verdiği geçici kimlik kartı. Yaklaşık 1-2 saat geçerli.
+Token, Kepler'in sana verdiği geçici kimlik kartı. Bot bunu kullanarak senin adına ders seçiyor. Yaklaşık 1-2 saat geçerli, **ders seçiminden kısa süre önce al.**
 
-1. Chrome'da şu sayfaya git ve giriş yap:
-   `https://obs.itu.edu.tr/ogrenci/DersKayitIslemleri/DersKayit`
+**1.** Chrome'da şu sayfaya git ve giriş yap:
+`https://obs.itu.edu.tr/ogrenci/DersKayitIslemleri/DersKayit`
 
-2. `F12` tuşuna bas → **Network** sekmesine tıkla
+**2.** `F12` tuşuna bas → üstten **Network** sekmesine tıkla → **Fetch/XHR** filtresini seç
 
-3. Üstteki filtreden **Fetch/XHR**'ı seç
+**3.** `F5` ile sayfayı yenile
 
-4. Sayfayı `F5` ile yenile
+**4.** Sol listede **`K...`** ile başlayan **`KayitZamaniKontrolu`** isteğine tıkla
 
-5. Listede **`KayitZamaniKontrolu`** isteğine tıkla
+**5.** **Headers** sekmesinde aşağı in, **`Authorization`** satırını bul
 
-6. **Headers** sekmesinde `authorization` satırını bul → **`Bearer eyJ...`** ile başlayan değeri kopyala
+**6.** `Bearer eyJ...` ile başlayan uzun metni **tamamını** kopyala
 
-> ⚠️ Ders seçiminden en fazla 1-2 saat önce al, süresi doluyor.
+![Token nasıl alınır](images/token-nasil-alinir.png)
+
+> ⚠️ Token'ı kimseyle paylaşma — Kepler hesabına erişim sağlar.
 
 ---
 
@@ -80,6 +82,7 @@ CRN_LIST = ["30280", "30287"]        # almak istediğin dersler
 SCRN_LIST = []                       # bırakmak istediğin dersler (yoksa boş bırak)
 
 START_TIME = datetime(2026, 9, 15, 17, 0)   # ders seçim tarihi ve saati
+#                     yıl   ay  gün  saat dakika
 ```
 
 **Yedek CRN kullanımı:**
@@ -124,13 +127,28 @@ Bot ders seçim saatine kadar bekler, saatinde otomatik ateşler.
 
 ---
 
+## Test Etme
+
+Gerçek ders seçim zamanı olmasa bile test edebilirsin:
+
+```bash
+python itu_bot.py
+```
+
+`START_TIME`'ı birkaç dakika sonrasına ayarla, botu çalıştır. Bot isteği attıktan sonra şu sayfada sonucu gör:
+`https://obs.itu.edu.tr/ogrenci/DersKayitIslemleri/DersKayitIslemGecmisi`
+
+"Kayıt Zamanı Engeli" hatası görüyorsan test başarılı — bot Kepler'e ulaştı.
+
+---
+
 ## Hata Kodları
 
 | Kod | Anlam | Bot ne yapıyor |
 |-----|-------|----------------|
 | `Ekleme İşlemi Başarılı` | Ders alındı ✓ | Durur |
 | `VAL02` | Henüz zaman açılmadı | Tekrar dener |
-| `VAL06` / `Kontenjan Dolu` | Kontenjan dolu | Yedek CRN varsa onu dener |
+| `VAL06` / `Kontenjan Dolu` | Kontenjan dolu | Yedek CRN varsa dener |
 | `VAL09` | Ders çakışması | Vazgeçer |
 | `VAL16` | Aktif işlem var | Tekrar dener |
 | `VAL21` | İstek limiti aşıldı | Durur |
@@ -145,11 +163,8 @@ Kepler'e giriş yaptığında site sana geçici bir kimlik kartı veriyor. Bot b
 **Token ne kadar süre geçerli?**
 Yaklaşık 1-2 saat. Ders seçiminden kısa süre önce al.
 
-**Bot neden tarayıcı açmıyor?**
-Tarayıcıyı sen açıp token alıyorsun, bot sadece o token'ı kullanarak HTTP isteği atıyor. Daha hızlı ve daha az hata çıkarıyor.
-
 **Ders seçildi mi nasıl anlarım?**
-Terminaldeki log'da `✓ Ders eklendi.` yazar. Ayrıca Kepler'de kontrol edebilirsin:
+Terminaldeki log'da `✓ Ders eklendi.` yazar. Kepler'den de kontrol edebilirsin:
 `https://obs.itu.edu.tr/ogrenci/DersKayitIslemleri/DersKayitIslemGecmisi`
 
 ---
