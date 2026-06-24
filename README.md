@@ -1,286 +1,173 @@
-"""
-İTÜ Kepler Ders Seçici — Selenium'suz, sadece requests
-=======================================================
-Kurulum : pip install requests
-Çalıştır: python itu_bot.py
-"""
+# İTÜ Kepler Ders Seçici 🎓
 
-import requests
-import time
-from datetime import datetime
+Ders seçim saatinde otomatik olarak HTTP isteği atarak Kepler üzerinden ders seçen Python botu.
 
-# ─────────────────────────────────────────
-#  AYARLAR — sadece bu bölümü doldur
-# ─────────────────────────────────────────
+**Selenium yok, tarayıcı açmıyor.** Sadece `requests` kütüphanesi kullanıyor.
 
-# Kepler'den kopyaladığın Bearer token
-# Nasıl alınır: Chrome → Kepler ders seçim sayfası → F12 → Network →
-#               Fetch/XHR → F5 → KayitZamaniKontrolu → Headers → authorization
-TOKEN = "Bearer eyJ..."
+---
 
-# Almak istediğin CRN'ler
-# Yedek CRN için "30280:30281" formatı: 30280 dolarsa 30281 dener
-CRN_LIST = ["30280", "30287", "30312"]
+## Nasıl Çalışır?
 
-# Bırakmak istediğin CRN'ler (yoksa boş bırak)
-SCRN_LIST = []
+1. Ders seçim saatinden **1 dakika önce** Kepler'e "açıldı mı?" diye sormaya başlar
+2. Saate **1 saniye kala** ders isteği atmaya başlar
+3. Açılıştan sonraki **2 saniye** boyunca **0.2 saniyede bir** istek atar (~15 istek)
+4. Ders alındıysa durur
 
-# Ders seçim zamanı — sadece bunu değiştir
-START_TIME = datetime(2026, 6, 24, 14, 0)
+---
 
-# ─────────────────────────────────────────
-#  SABİTLER (değiştirme)
-# ─────────────────────────────────────────
+## Kurulum
 
-COURSE_SELECTION_URL = "https://obs.itu.edu.tr/api/ders-kayit/v21/"
-TIME_CHECK_URL       = "https://obs.itu.edu.tr/api/ogrenci/Takvim/KayitZamaniKontrolu"
+### 1. Python Kur
 
-# Kritik pencere: START_TIME - 1sn → START_TIME + 2sn → 0.2sn arayla ~15 istek
-ATTACK_START = -1.0   # START_TIME'dan kaç saniye önce istek atmaya başla
-ATTACK_END   =  2.0   # START_TIME'dan kaç saniye sonra dur
-ATTACK_DELAY =  0.2   # istek aralığı (saniye)
+Python kurulu değilse → https://www.python.org/downloads
 
-RETURN_VALUES = {
-    "successResult"                             : "✓ İşlem başarılı.",
-    "Ekleme İşlemi Başarılı"                    : "✓ Ders eklendi.",
-    "Silme İşlemi Başarılı"                     : "✓ Ders bırakıldı.",
-    "errorResult"                               : "✗ Operasyon tamamlanamadı.",
-    "VAL01"                                     : "✗ Genel hata.",
-    "VAL02"                                     : "↻ Kayıt zaman engeli.",
-    "VAL03"                                     : "✗ Bu dönem zaten alınmış.",
-    "VAL04"                                     : "✗ Ders planında yok.",
-    "VAL05"                                     : "✗ Maksimum kredi aşıldı.",
-    "VAL06"                                     : "✗ Kontenjan dolu.",
-    "VAL07"                                     : "✗ AA notu ile verilmiş.",
-    "VAL08"                                     : "✗ Program şartı yok.",
-    "VAL09"                                     : "✗ Ders çakışması.",
-    "VAL10"                                     : "✗ Derse kayıtlı değilsin.",
-    "VAL11"                                     : "✗ Önşart eksik.",
-    "VAL12"                                     : "✗ Bu dönem açılmıyor.",
-    "VAL13"                                     : "↻ Geçici engel.",
-    "VAL14"                                     : "↻ Sistem yanıt vermiyor.",
-    "VAL15"                                     : "✗ Maksimum 12 CRN sınırı.",
-    "VAL16"                                     : "↻ Aktif işlem var.",
-    "VAL18"                                     : "✗ CRN engellendi.",
-    "VAL19"                                     : "✗ Önlisans dersi.",
-    "VAL20"                                     : "✗ Dönem başına 1 ders bırakılabilir.",
-    "VAL21"                                     : "⊗ İstek limiti aşıldı!",
-    "VAL22"                                     : "✗ CC+ notu verilmiş.",
-    "Kontenjan Dolu"                            : "✗ Kontenjan dolu.",
-    "ERRLoad"                                   : "↻ Sistem yanıt vermiyor.",
-    "NULLParam-CheckOgrenciKayitZamaniKontrolu" : "↻ Zaman engeli.",
-    "CRNListEmpty"                              : "✗ CRN listesi boş.",
-    "CRNNotFound"                               : "✗ CRN bulunamadı.",
-}
+Kurulumda **"Add Python to PATH"** kutucuğunu mutlaka işaretle.
 
-SUCCESS_CODES = {"successResult", "Ekleme İşlemi Başarılı", "Silme İşlemi Başarılı"}
-RETRY_CODES   = {"VAL01","VAL02","VAL13","VAL14","VAL16",
-                 "ERRLoad","NULLParam-CheckOgrenciKayitZamaniKontrolu"}
-TIMEOUT_CODES = {"VAL21"}
+Kurulumu doğrulamak için terminali aç:
+```
+python --version
+```
 
-# ─────────────────────────────────────────
-#  YARDIMCI FONKSİYONLAR
-# ─────────────────────────────────────────
+### 2. Botu İndir
 
-def log(msg):
-    ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
-    print(f"[{ts}] {msg}")
+Sağ üstteki yeşil **Code** butonuna tıkla → **Download ZIP** → ZIP'i aç.
 
-def get_headers():
-    return {
-        "Authorization": TOKEN,
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                      "AppleWebKit/537.36 (KHTML, like Gecko) "
-                      "Chrome/125.0.0.0 Safari/537.36",
-        "Content-Type": "application/json",
-    }
+Ya da Git kuruluysa:
+```bash
+git clone https://github.com/omertarikkrc/-T-bumblebee.git
+cd -T-bumblebee
+```
 
-def parse_crn_list(raw_list):
-    crns, backup = [], {}
-    for entry in raw_list:
-        entry = str(entry)
-        if ":" in entry:
-            primary, spare = entry.split(":", 1)
-            crns.append(primary)
-            backup[primary] = spare
-            log(f"  Yedek CRN: {primary} → {spare}")
-        else:
-            crns.append(entry)
-    return crns, backup
+### 3. Gerekli Paketi Kur
 
-def check_selection_time():
-    try:
-        r = requests.get(TIME_CHECK_URL, headers=get_headers(), timeout=5)
-        data = r.json()
-        result = data["kayitZamanKontrolResult"]
-        return result["ogrenciSinifaKayitOlabilir"] or result["ogrenciSiniftanAyrilabilir"]
-    except Exception:
-        return False
+```bash
+pip install requests
+```
 
-def send_request(crn_list, scrn_list):
-    try:
-        r = requests.post(
-            COURSE_SELECTION_URL,
-            headers=get_headers(),
-            json={"ECRN": crn_list, "SCRN": scrn_list},
-            timeout=8,
-        )
-        return r.json()
-    except requests.exceptions.Timeout:
-        log("  Zaman aşımı.")
-        return None
-    except Exception as e:
-        log(f"  İstek hatası: {e}")
-        return None
+---
 
-def process_results(result_json, crn_list, scrn_list, backup_map, original_backup_map):
-    timed_out = False
+## Kullanım
 
-    for item in result_json.get("ecrnResultList", []):
-        crn  = item["crn"]
-        code = item.get("resultCode", "")
-        msg  = RETURN_VALUES.get(code, f"Bilinmeyen kod: {code}")
-        log(f"  CRN {crn}: {msg}")
+### Adım 1 — Token Al
 
-        is_backup = crn in original_backup_map.values()
+Token, Kepler'in sana verdiği geçici kimlik kartı. Bot bunu kullanarak senin adına ders seçiyor. Yaklaşık 1-2 saat geçerli — **ders seçiminden kısa süre önce al.**
 
-        if code in TIMEOUT_CODES:
-            timed_out = True
-            break
-        elif code in SUCCESS_CODES:
-            crn_list.remove(crn)
-        elif code in {"VAL06", "Kontenjan Dolu"} and crn in backup_map:
-            spare = backup_map.pop(crn)
-            log(f"  → Yedek CRN deneniyor: {spare}")
-            crn_list.remove(crn)
-            crn_list.append(spare)
-            backup_map[spare] = crn
-        elif code in RETRY_CODES:
-            pass  # listede bırak, tekrar denenecek
-        else:
-            # Kesin başarısız
-            if is_backup:
-                original = next((k for k, v in original_backup_map.items() if v == crn), None)
-                if original:
-                    log(f"  → Yedek başarısız, orijinale dönülüyor: {original}")
-                    crn_list.remove(crn)
-                    crn_list.append(original)
-                    backup_map.pop(crn, None)
-                    return crn_list, scrn_list, timed_out
-            elif crn in backup_map:
-                spare = backup_map.pop(crn)
-                log(f"  → Yedek deneniyor: {spare}")
-                crn_list.remove(crn)
-                crn_list.append(spare)
-            else:
-                crn_list.remove(crn)
+**1.** Chrome'da şu sayfaya git ve giriş yap:
+```
+https://obs.itu.edu.tr/ogrenci/DersKayitIslemleri/DersKayit
+```
 
-    for item in result_json.get("scrnResultList", []):
-        crn  = item["crn"]
-        code = item.get("resultCode", "")
-        msg  = RETURN_VALUES.get(code, f"Bilinmeyen kod: {code}")
-        log(f"  SCRN {crn}: {msg}")
-        if code in SUCCESS_CODES:
-            scrn_list.remove(crn)
-        elif code not in RETRY_CODES:
-            scrn_list.remove(crn)
+**2.** `F12` tuşuna bas → üstten **Network** sekmesine tıkla → **Fetch/XHR** filtresini seç
 
-    return crn_list, scrn_list, timed_out
+**3.** `F5` ile sayfayı yenile
 
-# ─────────────────────────────────────────
-#  ANA AKIŞ
-# ─────────────────────────────────────────
+**4.** Sol listede **`KayitZamaniKontrolu`** isteğine tıkla
 
-def main():
-    print("=" * 55)
-    print("  İTÜ Kepler Ders Seçici")
-    print("=" * 55)
+**5.** **Headers** sekmesinde aşağı in, **`Authorization`** satırını bul
 
-    if TOKEN.startswith("Bearer eyJ..."):
-        print("\n⚠  TOKEN ayarlanmamış!")
-        print("   Chrome → Kepler ders seçim sayfası → F12 → Network")
-        print("   → Fetch/XHR → F5 → KayitZamaniKontrolu → Headers")
-        print("   → 'authorization' satırını kopyala")
-        input("\nEnter'a basarak çık...")
-        return
+**6.** `Bearer eyJ...` ile başlayan uzun metni **tamamını** kopyala
 
-    crn_list, backup_map = parse_crn_list(CRN_LIST)
-    scrn_list = [str(s) for s in SCRN_LIST]
-    original_backup_map = dict(backup_map)
+![Token nasıl alınır](https://private-user-images.githubusercontent.com/102172007/612411780-837c5b78-9343-46a7-ab40-dd1c3fad85c6.png?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3ODIyOTk4MDEsIm5iZiI6MTc4MjI5OTUwMSwicGF0aCI6Ii8xMDIxNzIwMDcvNjEyNDExNzgwLTgzN2M1Yjc4LTkzNDMtNDZhNy1hYjQwLWRkMWMzZmFkODVjNi5wbmc_WC1BbXotQWxnb3JpdGhtPUFXUzQtSE1BQy1TSEEyNTYmWC1BbXotQ3JlZGVudGlhbD1BS0lBVkNPRFlMU0E1M1BRSzRaQSUyRjIwMjYwNjI0JTJGdXMtZWFzdC0xJTJGczMlMkZhd3M0X3JlcXVlc3QmWC1BbXotRGF0ZT0yMDI2MDYyNFQxMTExNDFaJlgtQW16LUV4cGlyZXM9MzAwJlgtQW16LVNpZ25hdHVyZT03MWMxMDU0NmIwZjJjMjIwOWQ4OTkxMDhmNWY3NDg4NTZkZWFmZGFmODdmODUwNWFlZDgwMzc5OWE1Mjc5YWQyJlgtQW16LVNpZ25lZEhlYWRlcnM9aG9zdCZyZXNwb25zZS1jb250ZW50LXR5cGU9aW1hZ2UlMkZwbmcifQ.IqpokWRlaW0-RBtkP76RN_YqomKdhxP__v_xHnskq0U)
 
-    if not crn_list and not scrn_list:
-        log("CRN ve SCRN listeleri boş, çıkılıyor.")
-        return
+> ⚠️ Token'ı kimseyle paylaşma — Kepler hesabına erişim sağlar.
 
-    log(f"CRN listesi : {crn_list}")
-    log(f"SCRN listesi: {scrn_list}")
-    log(f"Hedef zaman : {START_TIME}")
-    log(f"Saldırı penceresi: {START_TIME.strftime('%H:%M:%S')} - 1sn → +2sn, 0.2sn arayla")
+---
 
-    # ── Bekleme ────────────────────────────────────────
-    delta = (START_TIME - datetime.now()).total_seconds()
-    if delta > 300:
-        wait = delta - 300
-        log(f"5 dk kalana kadar bekleniyor ({wait:.0f} sn)...")
-        time.sleep(wait)
+### Adım 2 — `itu_bot.py` Dosyasını Düzenle
 
-    delta = (START_TIME - datetime.now()).total_seconds()
-    if delta > 60:
-        wait = delta - 60
-        log(f"1 dk kalana kadar bekleniyor ({wait:.0f} sn)...")
-        time.sleep(wait)
+`itu_bot.py` dosyasını Not Defteri veya VS Code ile aç. En üstteki **AYARLAR** bölümünü doldur:
 
-    # ── 1 dk kala: zaman kontrolü ──────────────────────
-    log("Zaman kontrolü başladı...")
-    while True:
-        delta = (START_TIME - datetime.now()).total_seconds()
+```python
+TOKEN = "Bearer eyJ..."              # kopyaladığın token
 
-        if check_selection_time():
-            log("✓ Kepler: ders seçimi açıldı!")
-            break
+CRN_LIST = ["30280", "30287"]        # almak istediğin dersler
 
-        # START_TIME - 1sn: ne olursa olsun istek atmaya başla
-        if delta <= 1.0:
-            log(f"Hedefe 1 saniye kaldı — istek atılıyor!")
-            break
+SCRN_LIST = []                       # bırakmak istediğin dersler (yoksa boş bırak)
 
-        time.sleep(0.05)  # 50ms arayla kontrol et
+START_TIME = datetime(2026, 9, 15, 17, 0)   # ders seçim tarihi ve saati
+#                     yıl   ay  gün  saat dakika
+```
 
-    # ── Kritik Pencere: 0.2sn arayla istek ────────────
-    log("=" * 40)
-    log("DERS SEÇİMİ BAŞLIYOR")
-    log("=" * 40)
+**Yedek CRN kullanımı** — bir dersin kontenjanı dolarsa otomatik yedek dener:
+```python
+CRN_LIST = ["30280", "30287:30288"]  # 30287 dolarsa 30288 dener
+```
 
-    attack_deadline = START_TIME.timestamp() + ATTACK_END
-    attempt = 0
+---
 
-    while time.time() < attack_deadline:
-        attempt += 1
-        elapsed = datetime.now().timestamp() - START_TIME.timestamp()
-        log(f"── Deneme #{attempt}  [{elapsed:+.2f}s] ──")
+### Adım 3 — Botu Başlat
 
-        result = send_request(crn_list, scrn_list)
+Terminali aç, `itu_bot.py` dosyasının bulunduğu klasöre git ve çalıştır:
 
-        if result is not None:
-            crn_list, scrn_list, timed_out = process_results(
-                result, crn_list, scrn_list, backup_map, original_backup_map
-            )
+```bash
+python itu_bot.py
+```
 
-            if timed_out:
-                log("⊗ İstek limiti aşıldı! Duruyorum.")
-                break
+Bot ders seçim saatine kadar bekler, saatinde otomatik ateşler.
 
-            if not crn_list and not scrn_list:
-                log("🎉 Tüm dersler alındı!")
-                break
+> ⚠️ Bot çalışırken bilgisayarın uyku moduna geçmediğinden emin ol.
+> Windows: `Win + R` → `powercfg.cpl` → "Bilgisayarı uyut" → "Hiçbir zaman"
 
-        time.sleep(ATTACK_DELAY)
+---
 
-    print()
-    if crn_list or scrn_list:
-        log(f"Pencere kapandı. Sonuç: kalan CRN → {crn_list}")
-    log("Program sonlandı.")
-    input("Çıkmak için Enter'a bas...")
+## Örnek Çıktı
 
-if __name__ == "__main__":
-    main()
+```
+[13:59:00.000] CRN listesi : ['30280', '30287', '30312']
+[13:59:00.000] Hedef zaman : 2026-06-24 14:00:00
+[13:59:00.001] Zaman kontrolü başladı...
+[13:59:59.001] Hedefe 1 saniye kaldı — istek atılıyor!
+[13:59:59.001] ════ DERS SEÇİMİ BAŞLIYOR ════
+[13:59:59.010] ── Deneme #1  [-0.99s] ──
+[13:59:59.010]   CRN 30280: ↻ Kayıt zaman engeli.
+[14:00:00.210] ── Deneme #2  [+0.21s] ──
+[14:00:00.210]   CRN 30280: ✓ Ders eklendi.
+[14:00:00.410]   CRN 30287: ✓ Ders eklendi.
+[14:00:00.610]   CRN 30312: ✓ Ders eklendi.
+[14:00:00.610] 🎉 Tüm dersler alındı!
+```
+
+---
+
+## Hata Kodları
+
+| Kod | Anlam | Bot ne yapıyor |
+|-----|-------|----------------|
+| `Ekleme İşlemi Başarılı` | Ders alındı ✓ | Durur |
+| `VAL02` | Henüz zaman açılmadı | Tekrar dener |
+| `VAL06` / `Kontenjan Dolu` | Kontenjan dolu | Yedek CRN varsa dener |
+| `VAL09` | Ders çakışması | Vazgeçer |
+| `VAL16` | Aktif işlem var | Tekrar dener |
+| `VAL21` | İstek limiti aşıldı | Durur |
+
+---
+
+## Test Etme
+
+Gerçek ders seçim zamanı olmasa bile test edebilirsin. `START_TIME`'ı birkaç dakika sonrasına ayarla, botu çalıştır. Bot isteği attıktan sonra sonucu şu sayfada görebilirsin:
+
+```
+https://obs.itu.edu.tr/ogrenci/DersKayitIslemleri/DersKayitIslemGecmisi
+```
+
+"Kayıt Zamanı Engeli" hatası görüyorsan test başarılı — bot Kepler'e ulaştı.
+
+---
+
+## Sık Sorulan Sorular
+
+**Token nedir?**
+Kepler'e giriş yaptığında site sana geçici bir kimlik kartı veriyor. Bot bu kartı göstererek senin adına işlem yapıyor.
+
+**Token ne kadar süre geçerli?**
+Yaklaşık 1-2 saat. Ders seçiminden kısa süre önce al.
+
+**Ders seçildi mi nasıl anlarım?**
+Terminaldeki log'da `✓ Ders eklendi.` yazar. Kepler'den de kontrol edebilirsin:
+`https://obs.itu.edu.tr/ogrenci/DersKayitIslemleri/DersKayitIslemGecmisi`
+
+---
+
+## Lisans
+
+MIT — istediğin gibi kullanabilirsin.
