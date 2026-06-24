@@ -25,7 +25,7 @@ CRN_LIST = ["30280", "30287", "30312"]
 # Bırakmak istediğin CRN'ler (yoksa boş bırak)
 SCRN_LIST = []
 
-# Ders seçim zamanı — sadece bunu değiştir
+# Ders seçim zamanı — sadece bunu değiştir (yıl- ay- gün-saat-dk)
 START_TIME = datetime(2026, 6, 24, 14, 0)
 
 # ─────────────────────────────────────────
